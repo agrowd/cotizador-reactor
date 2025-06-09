@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { CONFIG } from './config';
 import { useReactorCalculations } from './hooks/useReactorCalculations';
 import InputSection from './components/InputSection';
@@ -107,286 +107,47 @@ function App() {
   const HEMISPHERICAL_HEAD_HEIGHT_RATIO = 0.5;
   const CYLINDER_HEIGHT_RATIO = 1.2;
 
-  // Calcular dimensiones geométricas
-  const dimensions = useMemo(() => {
-    const volumen_m3 = volumen / 1000;
-    let calculatedD = 0;
-    let calculatedR = 0;
-    let bottomHeightContribution = 0;
-    
-    // Calcular coeficiente de volumen según tipo de fondo
-    let C_volumen_fondo_parte_D3 = 0;
-    
-    switch (bottomType) {
-      case BOTTOM_TYPES.CONICAL:
-        C_volumen_fondo_parte_D3 = (1 / 3) * Math.PI * H_CONE_RATIO_TO_R * 
-          (1 + Math.pow(R_CONE_BOTTOM_RATIO_TO_R, 2) + R_CONE_BOTTOM_RATIO_TO_R) / 8;
-        break;
-      case BOTTOM_TYPES.TORISPHERICAL:
-        C_volumen_fondo_parte_D3 = Math.PI / 24;
-        break;
-      case BOTTOM_TYPES.HEMISPHERICAL:
-        C_volumen_fondo_parte_D3 = Math.PI / 12;
-        break;
-      case BOTTOM_TYPES.FLAT:
-      default:
-        C_volumen_fondo_parte_D3 = 0;
-        break;
-    }
-
-    // Calcular diámetro basado en volumen total
-    const C_volumen_cilindro_parte_D3 = 0.3 * Math.PI;
-    const final_total_volume_coefficient_D3 = C_volumen_cilindro_parte_D3 + C_volumen_fondo_parte_D3;
-    calculatedD = Math.pow(volumen_m3 / final_total_volume_coefficient_D3, 1 / 3);
-    calculatedR = calculatedD / 2;
-
-    // Calcular altura del cilindro
-    const calculatedH = CYLINDER_HEIGHT_RATIO * calculatedD;
-    
-    // Calcular contribución de altura del fondo
-    switch (bottomType) {
-      case BOTTOM_TYPES.CONICAL:
-        bottomHeightContribution = calculatedR * H_CONE_RATIO_TO_R;
-        break;
-      case BOTTOM_TYPES.TORISPHERICAL:
-        bottomHeightContribution = calculatedD * TORISPHERICAL_HEAD_DEPTH_RATIO;
-        break;
-      case BOTTOM_TYPES.HEMISPHERICAL:
-        bottomHeightContribution = calculatedD * HEMISPHERICAL_HEAD_HEIGHT_RATIO;
-        break;
-      case BOTTOM_TYPES.FLAT:
-      default:
-        bottomHeightContribution = 0;
-        break;
-    }
-
-    return {
-      calculatedD,
-      calculatedR,
-      calculatedH,
-      bottomHeightContribution
-    };
-  }, [volumen, bottomType]);
-
-  // Calcular áreas
-  const areas = useMemo(() => {
-    const { calculatedD, calculatedR, calculatedH } = dimensions;
-    const jacketDiameter = calculatedD * JACKET_DIAMETER_INCREASE_FACTOR;
-    
-    // Área cuerpo cilíndrico
-    const currentAreaChapaCuerpo = Math.PI * calculatedD * calculatedH;
-    
-    // Área camisa térmica
-    let currentAreaChapaCamisaTermica = 0;
-    if (conCamisa) {
-      currentAreaChapaCamisaTermica = Math.PI * jacketDiameter * calculatedH;
-    }
-    
-    // Área tapa superior
-    let currentAreaTapaSuperior = conTapaCurva 
-      ? TORISPHERICAL_AREA_FACTOR * Math.PI * Math.pow(calculatedR, 2) 
-      : Math.PI * Math.pow(calculatedR, 2);
-    
-    // Área fondo inferior
-    let currentAreaFondoInferior = 0;
-    switch (bottomType) {
-      case BOTTOM_TYPES.CONICAL:
-        const R1_area_cone = calculatedR;
-        const R2_area_cone = calculatedR * R_CONE_BOTTOM_RATIO_TO_R;
-        const hCone_area = calculatedR * H_CONE_RATIO_TO_R;
-        const slantHeight_area_cone = Math.sqrt(Math.pow(hCone_area, 2) + Math.pow(R1_area_cone - R2_area_cone, 2));
-        currentAreaFondoInferior = Math.PI * (R1_area_cone + R2_area_cone) * slantHeight_area_cone;
-        break;
-      case BOTTOM_TYPES.TORISPHERICAL:
-        currentAreaFondoInferior = TORISPHERICAL_AREA_FACTOR * Math.PI * Math.pow(calculatedR, 2);
-        break;
-      case BOTTOM_TYPES.HEMISPHERICAL:
-        currentAreaFondoInferior = 2 * Math.PI * Math.pow(calculatedR, 2);
-        break;
-      case BOTTOM_TYPES.FLAT:
-      default:
-        currentAreaFondoInferior = Math.PI * Math.pow(calculatedR, 2);
-        break;
-    }
-    
-    // Área total
-    const currentAreaChapaTotal = currentAreaChapaCuerpo + 
-      currentAreaTapaSuperior + 
-      currentAreaFondoInferior + 
-      currentAreaChapaCamisaTermica;
-    
-    return {
-      currentAreaChapaCuerpo,
-      currentAreaChapaCamisaTermica,
-      currentAreaTapaSuperior,
-      currentAreaFondoInferior,
-      currentAreaChapaTotal
-    };
-  }, [dimensions, conCamisa, conTapaCurva, bottomType]);
-
-  // Calcular volumen total del tanque
-  const totalVolume = useMemo(() => {
-    const { calculatedR, calculatedH, calculatedD } = dimensions;
-    const finalCylinderVolume_m3 = Math.PI * Math.pow(calculatedR, 2) * calculatedH;
-    let finalBottomVolume_m3 = 0;
-
-    switch (bottomType) {
-      case BOTTOM_TYPES.CONICAL:
-        const R1_final_cone = calculatedR;
-        const R2_final_cone = calculatedR * R_CONE_BOTTOM_RATIO_TO_R;
-        const hCone_final = calculatedR * H_CONE_RATIO_TO_R;
-        finalBottomVolume_m3 = (1 / 3) * Math.PI * hCone_final * 
-          (Math.pow(R1_final_cone, 2) + (R1_final_cone * R2_final_cone) + Math.pow(R2_final_cone, 2));
-        break;
-      case BOTTOM_TYPES.TORISPHERICAL:
-        finalBottomVolume_m3 = (Math.PI / 24) * Math.pow(calculatedD, 3);
-        break;
-      case BOTTOM_TYPES.HEMISPHERICAL:
-        finalBottomVolume_m3 = (2 / 3) * Math.PI * Math.pow(calculatedR, 3);
-        break;
-      case BOTTOM_TYPES.FLAT:
-        finalBottomVolume_m3 = 0;
-        break;
-      default:
-        finalBottomVolume_m3 = 0;
-        break;
-    }
-    
-    return (finalCylinderVolume_m3 + finalBottomVolume_m3) * 1000;
-  }, [dimensions, bottomType]);
-
-  // Efecto principal para cálculos
+  // Actualizar estados con los valores calculados
   useEffect(() => {
-    const espesor_m = espesorChapa / 1000;
-
-    setDiametro(dimensions.calculatedD);
-    setAlturaCilindro(dimensions.calculatedH);
-    setAlturaTotalReactor(dimensions.calculatedH + dimensions.bottomHeightContribution);
-
-    setAreaChapaCuerpo(areas.currentAreaChapaCuerpo);
-    setAreaChapaCamisaTermica(areas.currentAreaChapaCamisaTermica);
-    setAreaChapaTapaSuperior(areas.currentAreaTapaSuperior);
-    setAreaChapaFondoInferior(areas.currentAreaFondoInferior);
-    setAreaChapaTotal(areas.currentAreaChapaTotal);
-
-    // Calcular peso y costo de chapa
-    const calculatedKgChapa = areas.currentAreaChapaTotal * espesor_m * densidadAceroInoxidable;
-    const calculatedCostoChapaARS = calculatedKgChapa * precioKgAceroUSD * dolarExchangeRate;
-    setKgChapa(calculatedKgChapa);
-    setCostoChapaARS(calculatedCostoChapaARS);
-
-    // Calcular mano de obra
-    const calculatedManoObraARS = totalHorasManoObraInput * valorHoraManoObra;
-    setCostoManoObraCalculadoARS(calculatedManoObraARS);
-
-    // Calcular costo de accesorios
-    let currentCostoAccesoriosARS = 0;
-    let costoCamisaTemp = 0;
-    let costoValvulaTemp = 0;
-    let costoPatasTemp = 0;
-    let costoFondoTemp = 0;
-
-    // Costo camisa térmica
-    const currentCostoUnitarioCamisaTermicaARS_m2 = costoPorMetroDiametroCamisaARS * dimensions.calculatedD * 2.05;
-    setCalculatedCostoUnitarioCamisaTermicaARS_m2(currentCostoUnitarioCamisaTermicaARS_m2);
-
-    if (conCamisa) {
-      costoCamisaTemp = areas.currentAreaChapaCamisaTermica * currentCostoUnitarioCamisaTermicaARS_m2;
-      currentCostoAccesoriosARS += costoCamisaTemp;
+    if (dimensions) {
+      setDiametro(dimensions.calculatedD);
+      setAlturaCilindro(dimensions.calculatedH);
+      setAlturaTotalReactor(dimensions.calculatedH + dimensions.bottomHeightContribution);
     }
-    
-    // Costo válvula
-    if (conValvula) {
-      costoValvulaTemp = costoValvulaUSD * dolarExchangeRate;
-      currentCostoAccesoriosARS += costoValvulaTemp;
-    }
-    
-    // Costo visor
-    if (conVisor) {
-      currentCostoAccesoriosARS += costoVisorEditableARS;
-    }
-    
-    // Costo patas
-    if (conPatas) {
-      const costoTotalPatasUSD = costoBasePataUSD + Math.max(0, altoPatas - 0.5) * costoAdicionalPorMetroPataUSD;
-      costoPatasTemp = 4 * costoTotalPatasUSD * dolarExchangeRate;
-      currentCostoAccesoriosARS += costoPatasTemp;
-    }
-    
-    // Costo fondo
-    switch (bottomType) {
-      case BOTTOM_TYPES.FLAT:
-        costoFondoTemp = costoFondoPlanoARS;
-        break;
-      case BOTTOM_TYPES.CONICAL:
-        costoFondoTemp = costoFondoConicoARS;
-        break;
-      case BOTTOM_TYPES.TORISPHERICAL:
-        costoFondoTemp = costoFondoToriesfericoARS;
-        break;
-      case BOTTOM_TYPES.HEMISPHERICAL:
-        costoFondoTemp = costoFondoSemiEsfericoARS;
-        break;
-      default:
-        costoFondoTemp = 0;
-    }
-    currentCostoAccesoriosARS += costoFondoTemp;
-    
-    // Costo tapa curva
-    if (conTapaCurva) {
-      currentCostoAccesoriosARS += costoConformadoTapaCurvaARS;
-    }
-    
-    // Costo consumibles
-    currentCostoAccesoriosARS += costoConsumiblesARS;
-    
-    // Actualizar estados de desglose
-    setCostoCamisaTermicaARS(costoCamisaTemp);
-    setCostoValvulaARS(costoValvulaTemp);
-    setCostoPatasARS(costoPatasTemp);
-    setCostoFondoARS(costoFondoTemp);
-    setCostoAccesoriosARS(currentCostoAccesoriosARS);
+  }, [dimensions]);
 
-    // Calcular precios finales
-    const calculatedSubtotal = calculatedCostoChapaARS + calculatedManoObraARS + currentCostoAccesoriosARS;
-    const calculatedPrecioFinal = calculatedSubtotal * factorComercial;
-    setSubtotal(calculatedSubtotal);
-    setPrecioFinal(calculatedPrecioFinal);
+  useEffect(() => {
+    if (areas) {
+      setAreaChapaCuerpo(areas.currentAreaChapaCuerpo);
+      setAreaChapaTapaSuperior(areas.currentAreaTapaSuperior);
+      setAreaChapaFondoInferior(areas.currentAreaFondoInferior);
+      setAreaChapaTotal(areas.currentAreaChapaTotal);
+      setAreaChapaCamisaTermica(areas.currentAreaChapaCamisaTermica);
+    }
+  }, [areas]);
 
-    // Calcular capacidad total del tanque
-    setTotalTankCapacityLiters(totalVolume);
-    setCalculatedEspesorChapa(espesorChapa);
+  useEffect(() => {
+    if (costs) {
+      setKgChapa(costs.kgChapa);
+      setCostoChapaARS(costs.costoChapaARS);
+      setCostoManoObraCalculadoARS(costs.costoManoObraCalculadoARS);
+      setCostoAccesoriosARS(costs.costoAccesoriosARS);
+      setCostoCamisaTermicaARS(costs.costoCamisaTermicaARS);
+      setCostoValvulaARS(costs.costoValvulaARS);
+      setCostoPatasARS(costs.costoPatasARS);
+      setCostoFondoARS(costs.costoFondoARS);
+      setSubtotal(costs.subtotal);
+      setPrecioFinal(costs.precioFinal);
+      setCalculatedEspesorChapa(costs.calculatedEspesorChapa);
+      setCalculatedCostoUnitarioCamisaTermicaARS_m2(costs.calculatedCostoUnitarioCamisaTermicaARS_m2);
+    }
+  }, [costs]);
 
-  }, [
-    dimensions,
-    areas,
-    totalVolume,
-    espesorChapa,
-    factorComercial,
-    dolarExchangeRate,
-    altoPatas,
-    totalHorasManoObraInput,
-    conCamisa,
-    conValvula,
-    conVisor,
-    conPatas,
-    conTapaCurva,
-    bottomType,
-    densidadAceroInoxidable,
-    precioKgAceroUSD,
-    valorHoraManoObra,
-    costoConsumiblesARS,
-    costoPorMetroDiametroCamisaARS,
-    costoVisorEditableARS,
-    costoConformadoTapaCurvaARS,
-    costoValvulaUSD,
-    costoBasePataUSD,
-    costoAdicionalPorMetroPataUSD,
-    costoFondoPlanoARS,
-    costoFondoConicoARS,
-    costoFondoToriesfericoARS,
-    costoFondoSemiEsfericoARS
-  ]);
+  useEffect(() => {
+    if (totalVolume) {
+      setTotalTankCapacityLiters(totalVolume * 1000);
+    }
+  }, [totalVolume]);
 
   // Función de formato de moneda
   const formatCurrency = (value) => {
